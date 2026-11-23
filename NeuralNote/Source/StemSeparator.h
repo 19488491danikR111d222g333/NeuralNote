@@ -43,11 +43,7 @@ public:
     /** @return The Python environment and script, or nothing if stem mode is off or not installed. */
     static std::optional<Tools> findTools();
 
-    /**
-     * @return Where the stems of inSource go: <song>_FL next to it, like the Stems_to_FL batch file
-     *         makes, or a folder under the NeuralNote directory when the song's folder cannot be
-     *         written to.
-     */
+    /** @return Where the stems of inSource are split to: a working folder under NeuralNote's own. */
     static juce::File outputFolderFor(const juce::File& inSource);
 
     /**

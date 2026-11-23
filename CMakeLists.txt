@@ -123,7 +123,7 @@ endif ()
 
 juce_add_plugin("${BaseTargetName}"
         # VERSION ...                               # Set this if the plugin version is different to the project version
-        ICON_BIG "${CMAKE_CURRENT_LIST_DIR}/NeuralNote/Assets/Logo/neuralnote-1024.png"
+        ICON_BIG "${CMAKE_CURRENT_LIST_DIR}/NeuralNote/Assets/Logo/datune-1024.png"
         COMPANY_NAME "Danik"
         BUNDLE_ID "com.danik.datune"
         IS_SYNTH FALSE
@@ -148,7 +148,7 @@ get_target_property(nn_generated_dir ${BaseTargetName} JUCE_GENERATED_SOURCES_DI
 if (APPLE)
   configure_file(NeuralNote/Assets/Logo/NeuralNote.icns "${nn_generated_dir}/AppIcon.icns" COPYONLY)
 elseif (WIN32)
-  configure_file(NeuralNote/Assets/Logo/NeuralNote.ico "${nn_generated_dir}/icon.ico" COPYONLY)
+  configure_file(NeuralNote/Assets/Logo/DaTune.ico "${nn_generated_dir}/icon.ico" COPYONLY)
 endif ()
 
 juce_generate_juce_header(${BaseTargetName})

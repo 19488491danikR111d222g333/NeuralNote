@@ -81,16 +81,10 @@ std::optional<StemSeparator::Tools> StemSeparator::findTools()
 
 juce::File StemSeparator::outputFolderFor(const juce::File& inSource)
 {
-    const juce::String name = inSource.getFileNameWithoutExtension() + "_FL";
-    const juce::File parent = inSource.getParentDirectory();
-
-    // Recordings live in NeuralNote's own folder, which is writable; a song dropped from a read-only
-    // place (a mounted image, a protected folder) gets its stems under NeuralNote's folder instead.
-    if (parent.hasWriteAccess()) {
-        return parent.getChildFile(name);
-    }
-
-    return NNFileUtils::getNeuralNoteDirectory().getChildFile("Stems").getChildFile(name);
+    // A working copy in NeuralNote's own folder, deleted once the notes are made: nothing is left
+    // next to the song.
+    return NNFileUtils::getNeuralNoteDirectory().getChildFile("Stems").getChildFile(
+        inSource.getFileNameWithoutExtension());
 }
 
 std::optional<StemSeparator::Manifest> StemSeparator::readManifest(const juce::File& inFolder)

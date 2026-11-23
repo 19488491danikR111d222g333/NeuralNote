@@ -36,6 +36,7 @@ enum class StemTrack : int {
     Guitar,
     Keys,
     Winds,
+    Other,
     NumTracks
 };
 
@@ -65,8 +66,9 @@ inline constexpr StemTrackInfo STEM_TRACK_INFOS[] = {
     {StemTrack::Percussion, "Percussion", "PRC", 0x58667d, msl::DRUM_PROGRAM},
     {StemTrack::Bass, "Bass", "BAS", 0xa84dff, 33},
     {StemTrack::Guitar, "Guitar", "GTR", 0x5fe0b8, 27},
-    {StemTrack::Keys, "Keys", "KEY", 0x5a8cff, 0},
-    {StemTrack::Winds, "Winds & Brass", "WND", 0xd4e37a, 73},
+    {StemTrack::Keys, "Piano", "PNO", 0x5a8cff, 0},
+    {StemTrack::Winds, "Woodwinds", "WND", 0xd4e37a, 73},
+    {StemTrack::Other, "Other", "OTH", 0xe8a0ff, 81},
 };
 
 static_assert(std::size(STEM_TRACK_INFOS) == static_cast<std::size_t>(NUM_STEM_TRACKS),
@@ -159,7 +161,9 @@ inline constexpr StemTrack drumTrackForKey(int inKey)
         case 57:
             return StemTrack::Crash;
         default:
-            return StemTrack::Percussion;
+            // The batch file splits the kit into six parts and nothing else, so the rows match its
+            // audio folder: anything else low goes with the kick, the rest with the hats.
+            return inKey < 41 ? StemTrack::Kick : StemTrack::HiHat;
     }
 }
 

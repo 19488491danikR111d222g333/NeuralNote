@@ -113,6 +113,9 @@ private:
     /** Stem mode's equivalent of _drainEngine. */
     void _drainStemJob();
 
+    /** Stops every stem worker's engine. Any thread. */
+    void _cancelStemEngines();
+
     /**
      * Applies mJobOutcome. Message thread only: everything downstream of it (the processor state,
      * the value tree, the UI) belongs to that thread.
@@ -233,6 +236,9 @@ private:
     juce::CriticalSection mStemLock;
     std::vector<NoteEvent> mStemCompleted;
     int mStemGeneration = 0;
+    int mStemDoneCount = 0;
+    // One engine per worker while tracks are being transcribed, read for progress and cancellation.
+    std::vector<std::unique_ptr<MuscriptorEngine>> mStemEngines;
 
     // Message thread: the completed tracks as last seen, and the one being decoded.
     int mStemSeenGeneration = -1;

@@ -825,7 +825,7 @@ void testStemIdsAreDistinctFromPrograms()
     check(soundProgramFor(33) == 33, "a program sounds as itself");
     check(soundProgramFor(stemId(StemTrack::Bass)) == 33, "the bass stem plays a bass");
     check(isDrumId(msl::DRUM_PROGRAM), "full-mix drums are drums");
-    check(isDrumId(stemId(StemTrack::Kick)) && isDrumId(stemId(StemTrack::Percussion)), "drum stems are drums");
+    check(isDrumId(stemId(StemTrack::Kick)) && isDrumId(stemId(StemTrack::Crash)), "drum stems are drums");
     check(!isDrumId(stemId(StemTrack::LeadVocal)), "the vocal is not a drum");
     check(makeNote(0.0, 0.1, 36, stemId(StemTrack::Kick)).isDrum(), "a kick note is a drum hit");
 }
@@ -839,13 +839,13 @@ void testDrumKeysGoToTheirPiece()
     check(drumTrackForKey(51) == StemTrack::Ride, "51 is the ride");
     check(drumTrackForKey(49) == StemTrack::Crash, "49 is a crash");
     check(drumTrackForKey(39) == StemTrack::Snare, "a clap sits with the snare");
-    check(drumTrackForKey(70) == StemTrack::Percussion, "anything else is percussion");
+    check(drumTrackForKey(70) == StemTrack::HiHat && drumTrackForKey(35) == StemTrack::Kick, "no seventh drum row");
 }
 
 void testStemsComeFirstInTheSidebar()
 {
     check(sidebarOrderFor(stemId(StemTrack::LeadVocal)) < sidebarOrderFor(stemId(StemTrack::Kick)), "vocal before kick");
-    check(sidebarOrderFor(stemId(StemTrack::Winds)) < sidebarOrderFor(0), "every stem before the full-mix instruments");
+    check(sidebarOrderFor(stemId(StemTrack::Other)) < sidebarOrderFor(0), "every stem before the full-mix instruments");
     check(sidebarOrderFor(0) < sidebarOrderFor(msl::DRUM_PROGRAM), "full-mix drums last");
 }
 

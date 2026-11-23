@@ -15,6 +15,7 @@
 #include "StemTracks.h"
 
 #include <map>
+#include <thread>
 
 namespace
 {
@@ -125,6 +126,8 @@ TranscriptionManager::~TranscriptionManager()
     // ~ThreadPool waits 5 s and then kills the thread by force. Cancel and wait here instead, long
     // enough for GPU backend initialisation, which cannot be interrupted and took about 20 s on
     // the first run after a new build.
+    mStemCancel = true;
+    _cancelStemEngines();
     mMuscriptorEngine.cancel();
 
     const bool jobs_finished = mThreadPool.removeAllJobs(true, 30000);
@@ -386,14 +389,21 @@ MuscriptorEngine::Progress TranscriptionManager::getTranscriptionProgress() cons
             return {MuscriptorEngine::Phase::Separating, mStemSeparationProgress.load()};
         }
 
-        // One bar for all the tracks: each takes an equal share of it.
+        // One bar for all the tracks: each takes an equal share of it. Finished tracks count whole,
+        // the ones being decoded by how far they are (a model still loading counts as 0).
+        const ScopedLock sl(mStemLock);
         const int count = std::max(1, mStemCount.load());
-        // Loading the model for the next track measures the load, not the track: count it as 0.
-        const MuscriptorEngine::Progress engine = mMuscriptorEngine.getProgress();
-        const float within =
-            engine.phase == MuscriptorEngine::Phase::Transcribing ? std::max(0.0f, engine.fraction) : 0.0f;
-        const float overall = (static_cast<float>(mStemIndex.load()) + within) / static_cast<float>(count);
-        return {MuscriptorEngine::Phase::Transcribing, std::clamp(overall, 0.0f, 1.0f)};
+        float sum = static_cast<float>(mStemDoneCount);
+
+        for (const auto& engine: mStemEngines) {
+            const MuscriptorEngine::Progress progress = engine->getProgress();
+
+            if (progress.phase == MuscriptorEngine::Phase::Transcribing && progress.fraction < 1.0f) {
+                sum += std::max(0.0f, progress.fraction);
+            }
+        }
+
+        return {MuscriptorEngine::Phase::Transcribing, std::clamp(sum / static_cast<float>(count), 0.0f, 1.0f)};
     }
 
     if (mProcessor->getState() == Paused) {
@@ -412,6 +422,7 @@ void TranscriptionManager::pauseTranscription()
 {
     NnLogger::write(NnLogger::Level::Info, "TranscriptionManager: pause requested");
     mStemCancel = true;
+    _cancelStemEngines();
     mMuscriptorEngine.cancel();
 }
 
@@ -420,6 +431,7 @@ void TranscriptionManager::discardTranscription()
     NnLogger::write(NnLogger::Level::Info, "TranscriptionManager: discard requested");
     mDiscardOnStop = true;
     mStemCancel = true;
+    _cancelStemEngines();
     mMuscriptorEngine.cancel();
 }
 
@@ -758,6 +770,17 @@ std::vector<TranscriptionManager::StemPlan> TranscriptionManager::_planStems(con
         return true;
     });
 
+    // other.wav: whatever the model hears there is one row. Drum hits leaking into it are already in
+    // the drum rows, and would show as nonsense pitches in a melodic one.
+    const auto other_track = std::function<bool(NoteEvent&)>([](NoteEvent& ioNote) {
+        if (ioNote.isDrum()) {
+            return false;
+        }
+
+        ioNote.program = stemId(StemTrack::Other);
+        return true;
+    });
+
     const std::vector<G> voice = {G::Voice};
     const std::vector<G> bass = {G::ElectricBass, G::AcousticBass, G::Contrabass, G::SynthLead};
     const std::vector<G> guitar = {G::CleanElectricGuitar, G::DistortedElectricGuitar, G::AcousticGuitar};
@@ -775,17 +798,6 @@ std::vector<TranscriptionManager::StemPlan> TranscriptionManager::_planStems(con
                                   G::FrenchHorn,
                                   G::BrassSection,
                                   G::Tuba};
-
-    // Whatever Demucs could not name: synths, pads, strings, brass... Everything but what has a
-    // stem of its own, and each instrument keeps its own row.
-    std::vector<G> rest;
-
-    for (const G group: msl::allInstrumentGroups()) {
-        if (group != G::Voice && group != G::Drums && group != G::ElectricBass && group != G::AcousticBass
-            && group != G::Contrabass) {
-            rest.push_back(group);
-        }
-    }
 
     // Track name in the manifest -> what to look for in it and which row it fills. Reverb, crowd
     // and the full instrumental have no notes worth having, so they are not here.
@@ -807,7 +819,9 @@ std::vector<TranscriptionManager::StemPlan> TranscriptionManager::_planStems(con
         {"guitar", guitar, as_track(StemTrack::Guitar), false},
         {"piano", keys, as_track(StemTrack::Keys), false},
         {"woodwinds", winds, as_track(StemTrack::Winds), false},
-        {"other", rest, {}, true},
+        // other.wav, under the name Stems_to_FL gives it for this version: one row, the model picks what
+        // it hears. (Older builds read "other" and made a row per instrument they imagined there.)
+        {"other_one", {}, other_track, false},
     };
 
     std::vector<StemPlan> plans;
@@ -834,9 +848,9 @@ void TranscriptionManager::_runStemJob()
 {
     using Outcome = MuscriptorEngine::Outcome;
 
-    // Fewer notes than this, from the leftover mix, is an instrument the model thought it heard for a
-    // moment -- the one-note "Synth Lead" row -- not a part.
-    constexpr int MIN_NOTES_PER_INSTRUMENT = 12;
+    // A row with fewer notes than this is a track the model barely heard anything in -- a near-empty
+    // stem, not a part -- and is left out rather than shown as an empty-looking row.
+    constexpr int MIN_NOTES_PER_INSTRUMENT = 20;
 
     jassert(mStemTools.has_value());
 
@@ -848,6 +862,11 @@ void TranscriptionManager::_runStemJob()
         [this] { return mStemCancel.load(); },
         [this](float inFraction) { mStemSeparationProgress = inFraction; },
         error);
+
+    // The split tracks are only a working copy: nothing is left next to the song afterwards.
+    const ScopeGuard remove_working_copy {[this] {
+        mStemOutFolder.deleteRecursively();
+    }};
 
     if (mStemCancel) {
         mJobOutcome = Outcome::Cancelled;
@@ -870,72 +889,91 @@ void TranscriptionManager::_runStemJob()
 
     const std::vector<StemPlan> plans = _planStems(*manifest);
     mStemCount = static_cast<int>(plans.size());
+
+    // Several tracks at once, one model per worker (the library's rule for concurrency). The decoder
+    // leaves a desktop GPU mostly idle, so two or three run in about the time of one. Large holds the
+    // most memory, so it gets one worker fewer.
+    const int num_workers =
+        std::max(1, std::min(static_cast<int>(plans.size()), mJobModelSize == ModelSize::Large ? 2 : 3));
+
+    {
+        const ScopedLock sl(mStemLock);
+        mStemEngines.clear();
+
+        for (int w = 0; w < num_workers; w++) {
+            mStemEngines.push_back(std::make_unique<MuscriptorEngine>());
+        }
+
+        mStemDoneCount = 0;
+    }
+
     mStemPhase = 1;
 
-    int done = 0;
-    bool cancelled = false;
+    std::atomic<std::size_t> next_plan {0};
+    std::atomic<int> done {0};
+    std::atomic<bool> cancelled {false};
+    std::atomic<bool> stop_all {false};
+    CriticalSection problems_lock;
     StringArray problems;
 
-    for (std::size_t i = 0; i < plans.size(); i++) {
-        const StemPlan& plan = plans[i];
+    const auto worker = [&](MuscriptorEngine& inEngine) {
+        while (!stop_all && !mStemCancel) {
+            const std::size_t i = next_plan++;
 
-        if (mStemCancel) {
-            cancelled = true;
-            break;
-        }
+            if (i >= plans.size()) {
+                return;
+            }
 
-        mStemIndex = static_cast<int>(i);
+            const StemPlan& plan = plans[i];
 
-        AudioBuffer<float> audio;
-        double sample_rate = 0.0;
+            AudioBuffer<float> audio;
+            double sample_rate = 0.0;
 
-        if (!AudioUtils::loadAudioFile(plan.file, audio, sample_rate) || sample_rate <= 0.0) {
-            problems.add(plan.name + ": could not read " + plan.file.getFileName());
-            continue;
-        }
+            if (!AudioUtils::loadAudioFile(plan.file, audio, sample_rate) || sample_rate <= 0.0) {
+                const ScopedLock sl(problems_lock);
+                problems.add(plan.name + ": could not read " + plan.file.getFileName());
+                continue;
+            }
 
-        AudioBuffer<float> mono;
-        AudioUtils::resampleBufferToMono(audio, mono, sample_rate, TRANSCRIPTION_SAMPLE_RATE);
-        audio.setSize(0, 0);
+            AudioBuffer<float> mono;
+            AudioUtils::resampleBufferToMono(audio, mono, sample_rate, TRANSCRIPTION_SAMPLE_RATE);
+            audio.setSize(0, 0);
 
-        if (mono.getNumSamples() < static_cast<int>(TRANSCRIPTION_SAMPLE_RATE)) {
-            continue;
-        }
+            if (mono.getNumSamples() < static_cast<int>(TRANSCRIPTION_SAMPLE_RATE)) {
+                continue;
+            }
 
-        NnLogger::write(NnLogger::Level::Info,
-                        "TranscriptionManager: track " + String(i + 1) + "/" + String(plans.size()) + ": " + plan.name);
+            NnLogger::write(NnLogger::Level::Info,
+                            "TranscriptionManager: track " + String(i + 1) + "/" + String(plans.size()) + ": "
+                                + plan.name);
 
-        mMuscriptorEngine.reset();
+            inEngine.reset();
 
-        // reset() clears a pending stop; one that landed in between must still count.
-        if (mStemCancel) {
-            mMuscriptorEngine.cancel();
-        }
+            // reset() clears a pending stop; one that landed in between must still count.
+            if (mStemCancel) {
+                inEngine.cancel();
+            }
 
-        mMuscriptorEngine.setNoteMapper(plan.mapper);
+            inEngine.setNoteMapper(plan.mapper);
 
-        const Outcome outcome = mMuscriptorEngine.transcribeToMIDI(mJobModelSize,
-                                                                   mJobDevice,
-                                                                   mono.getReadPointer(0),
-                                                                   mono.getNumSamples(),
-                                                                   plan.instruments,
-                                                                   {},
-                                                                   0.0f);
+            const Outcome outcome = inEngine.transcribeToMIDI(
+                mJobModelSize, mJobDevice, mono.getReadPointer(0), mono.getNumSamples(), plan.instruments, {}, 0.0f);
 
-        if (outcome == Outcome::Cancelled) {
-            cancelled = true;
-            break;
-        }
+            if (outcome == Outcome::Cancelled) {
+                cancelled = true;
+                return;
+            }
 
-        if (outcome != Outcome::Success) {
-            // A model that cannot load or run fails the same way on every track.
-            problems.add(plan.name + ": " + String(mMuscriptorEngine.getLastErrorMessage()));
-            break;
-        }
+            if (outcome != Outcome::Success) {
+                // A model that cannot load or run fails the same way on every track.
+                const ScopedLock sl(problems_lock);
+                problems.add(plan.name + ": " + String(inEngine.getLastErrorMessage()));
+                stop_all = true;
+                return;
+            }
 
-        std::vector<NoteEvent> notes = mMuscriptorEngine.takeFinalNotes();
+            std::vector<NoteEvent> notes = inEngine.takeFinalNotes();
 
-        if (plan.dropSparseInstruments) {
             std::map<int, int> counts;
 
             for (const NoteEvent& note: notes) {
@@ -948,66 +986,74 @@ void TranscriptionManager::_runStemJob()
                                            return counts[inNote.program] < MIN_NOTES_PER_INSTRUMENT;
                                        }),
                         notes.end());
-        }
 
-        {
-            const ScopedLock sl(mStemLock);
-            mStemCompleted.insert(mStemCompleted.end(), notes.begin(), notes.end());
-            mStemGeneration++;
-        }
+            {
+                const ScopedLock sl(mStemLock);
+                mStemCompleted.insert(mStemCompleted.end(), notes.begin(), notes.end());
+                mStemGeneration++;
+                mStemDoneCount++;
+            }
 
-        done++;
+            done++;
+        }
+    };
+
+    std::vector<std::thread> threads;
+
+    for (int w = 1; w < num_workers; w++) {
+        threads.emplace_back([&, w] { worker(*mStemEngines[static_cast<std::size_t>(w)]); });
     }
 
-    mMuscriptorEngine.setNoteMapper({});
+    worker(*mStemEngines[0]);
+
+    for (auto& thread: threads) {
+        thread.join();
+    }
+
+    {
+        const ScopedLock sl(mStemLock);
+        mStemEngines.clear();
+    }
 
     if (!problems.isEmpty()) {
         mStemError = problems.joinIntoString("\n");
     }
 
     // Stopping half way keeps the tracks already done: each one is finished on its own.
-    mJobOutcome = done > 0 ? Outcome::Success : (cancelled ? Outcome::Cancelled : Outcome::Failed);
+    mJobOutcome = done > 0 ? Outcome::Success
+                           : ((cancelled || mStemCancel) ? Outcome::Cancelled : Outcome::Failed);
     mJobFinished = true;
 }
 
 void TranscriptionManager::_drainStemJob()
 {
-    bool changed = false;
-
-    if (mStemPhase.load() == 1) {
-        std::string resume_point;
-        float resume_progress = 0.0f;
-        const std::size_t before = mStemStreaming.size();
-        const double horizon_before = mStemHorizon;
-
-        mMuscriptorEngine.drainNewNotes(mStemStreaming, mStemHorizon, resume_point, resume_progress);
-        changed = mStemStreaming.size() != before || mStemHorizon > horizon_before;
-    }
-
     {
         const ScopedLock sl(mStemLock);
 
-        // A track finished: its final notes replace what was streamed of it.
-        if (mStemGeneration != mStemSeenGeneration) {
-            mStemSeenGeneration = mStemGeneration;
-            mStemCompletedCopy = mStemCompleted;
-            mStemStreaming.clear();
-            mStemHorizon = 0.0;
-            changed = true;
+        // Tracks appear as each one finishes; several are decoded at once, so none streams.
+        if (mStemGeneration == mStemSeenGeneration) {
+            return;
         }
-    }
 
-    if (!changed) {
-        return;
+        mStemSeenGeneration = mStemGeneration;
+        mStemCompletedCopy = mStemCompleted;
     }
 
     mRawNotes = mStemCompletedCopy;
-    mRawNotes.insert(mRawNotes.end(), mStemStreaming.begin(), mStemStreaming.end());
 
-    // The shaded part of the piano roll follows the track being decoded.
-    mFinalizedThrough = mStemHorizon;
+    // Every finished track covers the whole song: nothing to shade.
+    mFinalizedThrough = mProcessor->getSourceAudioManager()->getAudioSampleDuration();
 
     _updateSavedTranscription();
     _updatePostProcessing();
     _repaintPianoRoll();
+}
+
+void TranscriptionManager::_cancelStemEngines()
+{
+    const ScopedLock sl(mStemLock);
+
+    for (const auto& engine: mStemEngines) {
+        engine->cancel();
+    }
 }
