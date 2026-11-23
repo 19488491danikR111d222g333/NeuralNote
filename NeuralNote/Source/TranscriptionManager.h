@@ -225,7 +225,8 @@ private:
     std::optional<StemSeparator::Tools> mStemTools; // what the job runs; written before it is queued
     juce::File mStemSource;
     juce::File mStemOutFolder;
-    std::atomic<int> mStemPhase {0}; // 0 separating, 1 transcribing
+    std::atomic<int> mStemPhase {0}; // 1 once the extra tracks are being transcribed
+    std::atomic<bool> mStemFullMixDone {false};
     std::atomic<float> mStemSeparationProgress {-1.0f};
     std::atomic<int> mStemIndex {0};
     std::atomic<int> mStemCount {0};

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "NoteEvent.h"
+#include "NoteMatching.h"
 #include "NoteScheduler.h"
 #include "PianoRollRange.h"
 #include "SynthEvent.h"
@@ -862,8 +863,54 @@ void testMergeKeepsStemsApart()
     check(notes.size() == 2, "two vocal stems on one pitch stay two notes");
 }
 
+// Stem mode merges each separated track with the full-mix rows.
+void testTrackThatAddsNothingIsDropped()
+{
+    // The full mix already shows this bass line, with more notes than the track found.
+    std::vector<NoteEvent> full_mix;
+    for (int i = 0; i < 40; i++) {
+        full_mix.push_back(makeNote(i * 0.5, i * 0.5 + 0.4, 40, BASS));
+    }
+    std::vector<NoteEvent> track;
+    for (int i = 0; i < 30; i++) {
+        track.push_back(makeNote(i * 0.5 + 0.02, i * 0.5 + 0.4, 40, stemId(StemTrack::Bass)));
+    }
+    const auto merge = NoteMatching::mergeTrack(track, NoteMatching::byInstrument(full_mix));
+    check(!merge.addTrack, "a track the full mix already shows, with fewer notes, is not added");
+}
+
+void testRicherTrackReplacesItsRow()
+{
+    std::vector<NoteEvent> full_mix;
+    for (int i = 0; i < 20; i++) {
+        full_mix.push_back(makeNote(i * 1.0, i * 1.0 + 0.4, 60, 27));
+    }
+    full_mix.push_back(makeNote(0.0, 1.0, 36, DRUMS));
+    std::vector<NoteEvent> track;
+    for (int i = 0; i < 80; i++) {
+        track.push_back(makeNote(i * 0.25, i * 0.25 + 0.2, 60, stemId(StemTrack::Other)));
+    }
+    const auto merge = NoteMatching::mergeTrack(track, NoteMatching::byInstrument(full_mix));
+    check(merge.addTrack, "a richer version of a row is added");
+    check(merge.replacedInstruments.size() == 1 && merge.replacedInstruments[0] == 27, "and replaces that row only");
+}
+
+void testMissedPartIsAdded()
+{
+    std::vector<NoteEvent> full_mix = {makeNote(0.0, 1.0, 40, BASS), makeNote(1.0, 2.0, 43, BASS)};
+    std::vector<NoteEvent> track = {makeNote(0.0, 0.5, 72, stemId(StemTrack::LeadVocal)),
+                                    makeNote(0.5, 1.0, 74, stemId(StemTrack::LeadVocal))};
+    const auto merge = NoteMatching::mergeTrack(track, NoteMatching::byInstrument(full_mix));
+    check(merge.addTrack && merge.replacedInstruments.empty(), "a part the full mix missed is added beside it");
+    check(NoteMatching::coverage({}, track) == 0.0, "coverage of nothing is 0");
+}
+
 int main()
 {
+    testTrackThatAddsNothingIsDropped();
+    testRicherTrackReplacesItsRow();
+    testMissedPartIsAdded();
+
     testStemIdsAreDistinctFromPrograms();
     testDrumKeysGoToTheirPiece();
     testStemsComeFirstInTheSidebar();
