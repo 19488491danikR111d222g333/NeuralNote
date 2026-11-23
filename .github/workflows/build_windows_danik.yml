@@ -20,6 +20,9 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_MAXSIZE: 2G
+      # The runner's MSVC STL now asks for Clang 22, the runner's LLVM is 20.
+      CFLAGS: /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+      CXXFLAGS: /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
