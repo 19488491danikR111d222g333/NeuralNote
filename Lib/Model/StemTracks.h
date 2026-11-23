@@ -49,26 +49,28 @@ struct StemTrackInfo {
     const char* name;
     const char* abbreviation;
     std::uint32_t colour;
-    int soundProgram; // General MIDI program, or msl::DRUM_PROGRAM
+    // What the synth and the MIDI file play it with. A group, not a raw program: the bundled
+    // soundfont only holds the programs the model itself emits, one per group.
+    msl::InstrumentGroup soundGroup;
 };
 
 // In sidebar order. Colours follow the families of the full-mix instruments (voice cyan, drums
 // slate, bass purple, guitars green, keys blue, winds chartreuse) with values none of them use.
 inline constexpr StemTrackInfo STEM_TRACK_INFOS[] = {
-    {StemTrack::LeadVocal, "Lead Vocal", "VOX", 0x5fd4f5, 53},
-    {StemTrack::BackingVocals, "Backing Vocals", "BVX", 0x2f9fc4, 52},
-    {StemTrack::Kick, "Kick", "KCK", 0xa9b4c8, msl::DRUM_PROGRAM},
-    {StemTrack::Snare, "Snare", "SNR", 0x8d9ab3, msl::DRUM_PROGRAM},
-    {StemTrack::Toms, "Toms", "TOM", 0x6e7d96, msl::DRUM_PROGRAM},
-    {StemTrack::HiHat, "Hi-Hat", "HHT", 0xc4cbe0, msl::DRUM_PROGRAM},
-    {StemTrack::Ride, "Ride", "RDE", 0x9aa6c4, msl::DRUM_PROGRAM},
-    {StemTrack::Crash, "Crash", "CRS", 0xd6dbea, msl::DRUM_PROGRAM},
-    {StemTrack::Percussion, "Percussion", "PRC", 0x58667d, msl::DRUM_PROGRAM},
-    {StemTrack::Bass, "Bass", "BAS", 0xa84dff, 33},
-    {StemTrack::Guitar, "Guitar", "GTR", 0x5fe0b8, 27},
-    {StemTrack::Keys, "Piano", "PNO", 0x5a8cff, 0},
-    {StemTrack::Winds, "Woodwinds", "WND", 0xd4e37a, 73},
-    {StemTrack::Other, "Other", "OTH", 0xe8a0ff, 81},
+    {StemTrack::LeadVocal, "Lead Vocal", "VOX", 0x5fd4f5, msl::InstrumentGroup::Voice},
+    {StemTrack::BackingVocals, "Backing Vocals", "BVX", 0x2f9fc4, msl::InstrumentGroup::Voice},
+    {StemTrack::Kick, "Kick", "KCK", 0xa9b4c8, msl::InstrumentGroup::Drums},
+    {StemTrack::Snare, "Snare", "SNR", 0x8d9ab3, msl::InstrumentGroup::Drums},
+    {StemTrack::Toms, "Toms", "TOM", 0x6e7d96, msl::InstrumentGroup::Drums},
+    {StemTrack::HiHat, "Hi-Hat", "HHT", 0xc4cbe0, msl::InstrumentGroup::Drums},
+    {StemTrack::Ride, "Ride", "RDE", 0x9aa6c4, msl::InstrumentGroup::Drums},
+    {StemTrack::Crash, "Crash", "CRS", 0xd6dbea, msl::InstrumentGroup::Drums},
+    {StemTrack::Percussion, "Percussion", "PRC", 0x58667d, msl::InstrumentGroup::Drums},
+    {StemTrack::Bass, "Bass", "BAS", 0xa84dff, msl::InstrumentGroup::ElectricBass},
+    {StemTrack::Guitar, "Guitar", "GTR", 0x5fe0b8, msl::InstrumentGroup::CleanElectricGuitar},
+    {StemTrack::Keys, "Piano", "PNO", 0x5a8cff, msl::InstrumentGroup::AcousticPiano},
+    {StemTrack::Winds, "Woodwinds", "WND", 0xd4e37a, msl::InstrumentGroup::Flutes},
+    {StemTrack::Other, "Other", "OTH", 0xe8a0ff, msl::InstrumentGroup::SynthLead},
 };
 
 static_assert(std::size(STEM_TRACK_INFOS) == static_cast<std::size_t>(NUM_STEM_TRACKS),
@@ -103,16 +105,17 @@ inline constexpr const StemTrackInfo* stemInfoFor(int inId)
 }
 
 /** @return The program the synth and the MIDI file play an instrument id with. */
-inline constexpr int soundProgramFor(int inId)
+inline int soundProgramFor(int inId)
 {
     const StemTrackInfo* info = stemInfoFor(inId);
-    return info != nullptr ? info->soundProgram : inId;
+    return info != nullptr ? msl::programFor(info->soundGroup) : inId;
 }
 
 /** @return Whether the id is a drum instrument: full-mix drums or one of the drum stems. */
 inline constexpr bool isDrumId(int inId)
 {
-    return soundProgramFor(inId) == msl::DRUM_PROGRAM;
+    const StemTrackInfo* info = stemInfoFor(inId);
+    return info != nullptr ? info->soundGroup == msl::InstrumentGroup::Drums : inId == msl::DRUM_PROGRAM;
 }
 
 /**

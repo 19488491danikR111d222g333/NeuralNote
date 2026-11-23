@@ -823,7 +823,11 @@ void testStemIdsAreDistinctFromPrograms()
     check(!isStemId(0) && !isStemId(msl::DRUM_PROGRAM), "programs are not stems");
     check(isStemId(stemId(StemTrack::LeadVocal)) && isStemId(stemId(StemTrack::Winds)), "stems are stems");
     check(soundProgramFor(33) == 33, "a program sounds as itself");
-    check(soundProgramFor(stemId(StemTrack::Bass)) == 33, "the bass stem plays a bass");
+    check(soundProgramFor(stemId(StemTrack::Bass)) == msl::programFor(msl::InstrumentGroup::ElectricBass), "the bass stem plays a bass");
+    for (int id = FIRST_STEM_ID; id < NUM_INSTRUMENT_IDS; id++) {
+        const int program = soundProgramFor(id);
+        check(program == msl::DRUM_PROGRAM || msl::instrumentGroupFor(program).has_value(), "every stem plays a program the soundfont has");
+    }
     check(isDrumId(msl::DRUM_PROGRAM), "full-mix drums are drums");
     check(isDrumId(stemId(StemTrack::Kick)) && isDrumId(stemId(StemTrack::Crash)), "drum stems are drums");
     check(!isDrumId(stemId(StemTrack::LeadVocal)), "the vocal is not a drum");
