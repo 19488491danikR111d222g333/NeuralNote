@@ -3,6 +3,7 @@
 //
 
 #include "InstrumentStrip.h"
+#include "StemTracks.h"
 
 #include "GainConstants.h"
 #include "NnFonts.h"
@@ -206,7 +207,7 @@ void InstrumentStrip::paint(juce::Graphics& g)
 
     if (!mEntry.hasNotes()) {
         meta = mTranscriptionFinished ? "no notes" : juce::String();
-    } else if (mEntry.program == msl::DRUM_PROGRAM) {
+    } else if (isDrumId(mEntry.program)) {
         meta = juce::String(mEntry.noteCount) + " hits" + separator + "kit map";
     } else {
         meta = juce::String(mEntry.noteCount) + " notes" + separator + nn::midiNoteName(mEntry.lowestPitch) + "-"

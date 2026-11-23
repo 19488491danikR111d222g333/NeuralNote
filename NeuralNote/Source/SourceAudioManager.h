@@ -88,6 +88,12 @@ public:
     String getDroppedFilename() const;
 
     /**
+     * @return The source audio at its native sample rate: the dropped file, or the recording's own
+     *         file. Stem mode separates this one, not the downsampled copy. Message thread.
+     */
+    File getSourceFile() const { return mSourceFile; }
+
+    /**
      * Get number of samples currently acquired (either recorded or loaded from file) at basic pitch sample rate (22.05 kHz)
      * Note that if recording is ongoing, those sample are not yet available in buffers returned by getDownsampledSourceAudioForTranscription() and getSourceAudioForPlayback().
      * @return Number of source audio samples already recorded or loaded at basic pitch sample rate.

@@ -184,7 +184,11 @@ MuscriptorEngine::Outcome MuscriptorEngine::transcribeToMIDI(ModelSize inModelSi
             const std::lock_guard<std::mutex> lock(mStagingMutex);
 
             for (const msl::Note& note: inUpdate.new_notes) {
-                mStaging.push_back(toNoteEvent(note));
+                NoteEvent event = toNoteEvent(note);
+
+                if (!mNoteMapper || mNoteMapper(event)) {
+                    mStaging.push_back(event);
+                }
             }
 
             mFinalizedThrough = inUpdate.finalized_through;
@@ -249,7 +253,11 @@ MuscriptorEngine::Outcome MuscriptorEngine::transcribeToMIDI(ModelSize inModelSi
     mFinalNotes.reserve(result->size());
 
     for (const auto& note: *result) {
-        mFinalNotes.push_back(toNoteEvent(note));
+        NoteEvent event = toNoteEvent(note);
+
+        if (!mNoteMapper || mNoteMapper(event)) {
+            mFinalNotes.push_back(event);
+        }
     }
 
     mProgress = Progress {Phase::Transcribing, 1.f};
@@ -314,4 +322,9 @@ bool MuscriptorEngine::isCancelRequested() const
 MuscriptorEngine::Progress MuscriptorEngine::getProgress() const
 {
     return mProgress.load();
+}
+
+void MuscriptorEngine::setNoteMapper(std::function<bool(NoteEvent&)> inMapper)
+{
+    mNoteMapper = std::move(inMapper);
 }

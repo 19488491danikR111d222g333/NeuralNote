@@ -4,6 +4,8 @@
 
 #include "InstrumentInfo.h"
 
+#include "StemTracks.h"
+
 #include <algorithm>
 #include <string>
 
@@ -131,6 +133,10 @@ const GroupDisplay* findDisplayForProgram(int inProgram)
 
 InstrumentDisplay instrumentDisplayFor(int inProgram)
 {
+    if (const StemTrackInfo* stem = stemInfoFor(inProgram)) {
+        return {stem->name, stem->abbreviation};
+    }
+
     if (const GroupDisplay* display = findDisplayForProgram(inProgram)) {
         return {display->name, display->abbreviation};
     }
@@ -153,6 +159,10 @@ InstrumentDisplay instrumentDisplayForGroup(msl::InstrumentGroup inGroup)
 
 juce::Colour instrumentColourFor(int inProgram)
 {
+    if (const StemTrackInfo* stem = stemInfoFor(inProgram)) {
+        return juce::Colour(stem->colour).withAlpha(1.0f);
+    }
+
     if (const GroupDisplay* display = findDisplayForProgram(inProgram)) {
         return juce::Colour(display->colour).withAlpha(1.0f);
     }

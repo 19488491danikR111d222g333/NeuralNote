@@ -815,8 +815,56 @@ void testVisibleBarsCoverTheClipAndStopAtTheAudio()
 
 } // namespace
 
+// Stem mode: every separated track is its own instrument id, with a sound and a sidebar place.
+void testStemIdsAreDistinctFromPrograms()
+{
+    check(FIRST_STEM_ID == msl::DRUM_PROGRAM + 1, "stem ids start right after drums");
+    check(NUM_INSTRUMENT_IDS == FIRST_STEM_ID + NUM_STEM_TRACKS, "one id per stem track");
+    check(!isStemId(0) && !isStemId(msl::DRUM_PROGRAM), "programs are not stems");
+    check(isStemId(stemId(StemTrack::LeadVocal)) && isStemId(stemId(StemTrack::Winds)), "stems are stems");
+    check(soundProgramFor(33) == 33, "a program sounds as itself");
+    check(soundProgramFor(stemId(StemTrack::Bass)) == 33, "the bass stem plays a bass");
+    check(isDrumId(msl::DRUM_PROGRAM), "full-mix drums are drums");
+    check(isDrumId(stemId(StemTrack::Kick)) && isDrumId(stemId(StemTrack::Percussion)), "drum stems are drums");
+    check(!isDrumId(stemId(StemTrack::LeadVocal)), "the vocal is not a drum");
+    check(makeNote(0.0, 0.1, 36, stemId(StemTrack::Kick)).isDrum(), "a kick note is a drum hit");
+}
+
+void testDrumKeysGoToTheirPiece()
+{
+    check(drumTrackForKey(36) == StemTrack::Kick, "36 is the kick");
+    check(drumTrackForKey(38) == StemTrack::Snare, "38 is the snare");
+    check(drumTrackForKey(42) == StemTrack::HiHat && drumTrackForKey(46) == StemTrack::HiHat, "hats");
+    check(drumTrackForKey(45) == StemTrack::Toms, "45 is a tom");
+    check(drumTrackForKey(51) == StemTrack::Ride, "51 is the ride");
+    check(drumTrackForKey(49) == StemTrack::Crash, "49 is a crash");
+    check(drumTrackForKey(39) == StemTrack::Snare, "a clap sits with the snare");
+    check(drumTrackForKey(70) == StemTrack::Percussion, "anything else is percussion");
+}
+
+void testStemsComeFirstInTheSidebar()
+{
+    check(sidebarOrderFor(stemId(StemTrack::LeadVocal)) < sidebarOrderFor(stemId(StemTrack::Kick)), "vocal before kick");
+    check(sidebarOrderFor(stemId(StemTrack::Winds)) < sidebarOrderFor(0), "every stem before the full-mix instruments");
+    check(sidebarOrderFor(0) < sidebarOrderFor(msl::DRUM_PROGRAM), "full-mix drums last");
+}
+
+void testMergeKeepsStemsApart()
+{
+    // Lead and backing vocal on the same pitch at the same time are two parts, not one.
+    std::vector<NoteEvent> notes = {makeNote(0.0, 1.0, 60, stemId(StemTrack::LeadVocal)),
+                                    makeNote(0.5, 1.5, 60, stemId(StemTrack::BackingVocals))};
+    NoteEvent::mergeOverlappingNotesWithSamePitch(notes);
+    check(notes.size() == 2, "two vocal stems on one pitch stay two notes");
+}
+
 int main()
 {
+    testStemIdsAreDistinctFromPrograms();
+    testDrumKeysGoToTheirPiece();
+    testStemsComeFirstInTheSidebar();
+    testMergeKeepsStemsApart();
+
     testNotesStartAndStop();
     testShortNoteDoesNotSpanTwoBlocks();
     testSwapKeepsHeldNoteAndStopsRemovedOne();

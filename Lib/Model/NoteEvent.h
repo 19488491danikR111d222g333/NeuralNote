@@ -10,19 +10,19 @@
 #include <vector>
 
 #include "muscriptor/muscriptor.hpp"
+#include "StemTracks.h"
 
-// 0-127 for a melodic note, msl::DRUM_PROGRAM (128) for a drum hit, so one integer identifies the
-// instrument everywhere: the synth's tsf instance, the piano roll's colour, and eventually the MIDI
-// track. The model can only reach 35 of those values -- the 34 group representatives plus drums --
-// but indexing by program keeps the identity the library gave us instead of inventing a second one.
-inline constexpr int NUM_INSTRUMENT_IDS = msl::DRUM_PROGRAM + 1;
+// 0-127 for a melodic note, msl::DRUM_PROGRAM (128) for a drum hit, and FIRST_STEM_ID and up for a
+// track separated out of the song in stem mode (see StemTracks.h), so one integer identifies the
+// instrument everywhere: the synth's tsf instance, the piano roll's colour, and the MIDI track.
+// NUM_INSTRUMENT_IDS comes from StemTracks.h.
 
 struct NoteEvent {
     double startTime = 0.0; // seconds
     double endTime = 0.0; // seconds
     int pitch = 0; // MIDI note number, 0-127
     double amplitude = 0.0; // 0-1, velocity-like value used for synth gain and MIDI velocity
-    int program = 0; // 0-127, or msl::DRUM_PROGRAM
+    int program = 0; // instrument id: 0-127, msl::DRUM_PROGRAM, or a stem id (StemTracks.h)
 
     /**
      * A complete test on its own. The library resolves drums before we see them: the note assembler
@@ -30,7 +30,7 @@ struct NoteEvent {
      * no melodic note carries that program and no drum hit carries any other. That also settles the
      * reference's program-96 quirk, which arrives here already routed as a drum.
      */
-    bool isDrum() const { return program == msl::DRUM_PROGRAM; }
+    bool isDrum() const { return isDrumId(program); }
 
     bool operator==(const NoteEvent&) const = default;
 

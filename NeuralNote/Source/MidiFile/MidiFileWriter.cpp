@@ -37,7 +37,7 @@ MidiChannelMap buildChannelMap(const std::vector<NoteEvent>& inNoteEvents, MidiO
     // Ascending, which matches InstrumentMixer's ordering in the sidebar.
     std::vector<int> melodic_programs;
     for (const auto& entry: note_counts) {
-        if (entry.first != msl::DRUM_PROGRAM) {
+        if (!isDrumId(entry.first)) {
             melodic_programs.push_back(entry.first);
         }
     }
@@ -62,6 +62,11 @@ MidiChannelMap buildChannelMap(const std::vector<NoteEvent>& inNoteEvents, MidiO
         std::sort(melodic_programs.begin(), melodic_programs.end());
     }
 
+    // Channels handed out in sidebar order, so the separated stems get the first ones.
+    std::sort(melodic_programs.begin(), melodic_programs.end(), [](int a, int b) {
+        return sidebarOrderFor(a) < sidebarOrderFor(b);
+    });
+
     for (size_t i = 0; i < melodic_programs.size(); i++) {
         if (i < MELODIC_CHANNELS.size()) {
             channel_map.channelForProgram[melodic_programs[i]] = MELODIC_CHANNELS[i];
@@ -73,8 +78,12 @@ MidiChannelMap buildChannelMap(const std::vector<NoteEvent>& inNoteEvents, MidiO
         }
     }
 
-    if (note_counts.count(msl::DRUM_PROGRAM) > 0) {
-        channel_map.channelForProgram[msl::DRUM_PROGRAM] = DRUM_CHANNEL;
+    // Every drum instrument -- the full-mix kit and each drum stem -- shares channel 10, on its own
+    // track, so the kick, the snare and the hats land on separate tracks of one kit.
+    for (const auto& entry: note_counts) {
+        if (isDrumId(entry.first)) {
+            channel_map.channelForProgram[entry.first] = DRUM_CHANNEL;
+        }
     }
 
     return channel_map;
@@ -124,7 +133,7 @@ bool MidiFileWriter::writeMidiFile(const std::vector<NoteEvent>& inNoteEvents,
         track.addEvent(track_name);
 
         auto program_change =
-            MidiMessage::programChange(channel, program == msl::DRUM_PROGRAM ? DRUM_KIT_PROGRAM : program);
+            MidiMessage::programChange(channel, isDrumId(program) ? DRUM_KIT_PROGRAM : soundProgramFor(program));
         program_change.setTimeStamp(0.0);
         track.addEvent(program_change);
     }
@@ -148,7 +157,18 @@ bool MidiFileWriter::writeMidiFile(const std::vector<NoteEvent>& inNoteEvents,
         track.addEvent(note_off);
     }
 
-    for (auto& [program, track]: instrument_tracks) {
+    // In sidebar order -- the separated stems first -- so a DAW that makes one channel per track
+    // lists them the way NeuralNote did.
+    std::vector<int> track_order;
+
+    for (const auto& entry: instrument_tracks) {
+        track_order.push_back(entry.first);
+    }
+
+    std::sort(track_order.begin(), track_order.end(), [](int a, int b) { return sidebarOrderFor(a) < sidebarOrderFor(b); });
+
+    for (const int program: track_order) {
+        auto& track = instrument_tracks[program];
         track.updateMatchedPairs();
         midi_file.addTrack(track);
     }

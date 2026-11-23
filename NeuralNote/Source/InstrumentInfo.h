@@ -22,7 +22,7 @@ struct InstrumentDisplay {
 };
 
 /**
- * @param inProgram A MIDI program, or msl::DRUM_PROGRAM.
+ * @param inProgram A MIDI program, msl::DRUM_PROGRAM, or a stem id (StemTracks.h).
  * @return Its display name and chip abbreviation. Programs outside the model's named groups --
  *         which it can decode but never picks -- fall back to the library's own `program_<n>`.
  */

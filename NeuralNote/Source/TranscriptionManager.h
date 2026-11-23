@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include "MuscriptorEngine.h"
+#include "StemSeparator.h"
 #include "TranscriptionConstants.h"
 
 class NeuralNoteAudioProcessor;
@@ -62,6 +63,9 @@ public:
     /** @return Whether the current transcription has been asked to stop. */
     bool isCancelRequested() const;
 
+    /** @return Whether the running or last transcription splits the song into tracks first. */
+    bool isStemJob() const { return mJobIsStem.load(); }
+
     void clear();
 
     /** @return The checkpoint the current transcription is from, running or finished. Message thread. */
@@ -87,6 +91,27 @@ private:
     void _launchJob();
 
     void _runModel();
+
+    /**
+     * Stem mode, on the job thread: separates the song with Stems_to_FL, then transcribes every
+     * track on its own with the instruments that track can hold, each under its own instrument id
+     * (StemTracks.h). Falls back to the full mix when the separation is not available or fails.
+     */
+    void _runStemJob();
+
+    /** One track to transcribe, and how its notes become rows. */
+    struct StemPlan {
+        juce::String name;
+        juce::File file;
+        std::vector<msl::InstrumentGroup> instruments;
+        std::function<bool(NoteEvent&)> mapper;
+        bool dropSparseInstruments = false; // the leftover mix: instruments with a handful of notes are noise
+    };
+
+    static std::vector<StemPlan> _planStems(const StemSeparator::Manifest& inManifest);
+
+    /** Stem mode's equivalent of _drainEngine. */
+    void _drainStemJob();
 
     /**
      * Applies mJobOutcome. Message thread only: everything downstream of it (the processor state,
@@ -190,8 +215,34 @@ private:
     // rescan the note list on every timer tick for the rest of the session.
     bool mDidCatchUpSynthInstruments = false;
 
+    // ---- stem mode. mJobIsStem is set on the message thread before the job is queued, and cleared
+    // by the job itself if it falls back to the full mix.
+    std::atomic<bool> mJobIsStem {false};
+    std::atomic<bool> mStemCancel {false};
+    std::optional<StemSeparator::Tools> mStemTools; // what the job runs; written before it is queued
+    juce::File mStemSource;
+    juce::File mStemOutFolder;
+    std::atomic<int> mStemPhase {0}; // 0 separating, 1 transcribing
+    std::atomic<float> mStemSeparationProgress {-1.0f};
+    std::atomic<int> mStemIndex {0};
+    std::atomic<int> mStemCount {0};
+    std::atomic<double> mStemBpm {0.0};
+    juce::String mStemError; // written by the job before mJobFinished
+
+    // Tracks already transcribed, published by the job after each one. mStemGeneration counts them.
+    juce::CriticalSection mStemLock;
+    std::vector<NoteEvent> mStemCompleted;
+    int mStemGeneration = 0;
+
+    // Message thread: the completed tracks as last seen, and the one being decoded.
+    int mStemSeenGeneration = -1;
+    std::vector<NoteEvent> mStemCompletedCopy;
+    std::vector<NoteEvent> mStemStreaming;
+    double mStemHorizon = 0.0; // how far the track being decoded has got
+
     ThreadPool mThreadPool;
     std::function<void()> mJobLambda;
+    std::function<void()> mStemJobLambda;
 };
 
 #endif //TranscriptionManager_h

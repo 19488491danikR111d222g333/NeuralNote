@@ -5,6 +5,7 @@
 #include "InstrumentMixer.h"
 
 #include <algorithm>
+#include <array>
 
 #include "GainConstants.h"
 #include "InstrumentInfo.h"
@@ -63,10 +64,19 @@ void InstrumentMixer::_rebuildEntries()
     mLowestPitch = 127;
     mHighestPitch = 0;
 
-    // Ascending program order, which puts drums (128) last and is stable as the transcription
-    // streams in. Ordering by first appearance would reshuffle the sidebar each time a chunk
-    // introduced an instrument with a lower program.
-    for (int program = 0; program < NUM_INSTRUMENT_IDS; program++) {
+    // Fixed order, stable as the transcription streams in: the separated stems first, in
+    // StemTracks.h order (vocals, drum pieces, bass, guitar, keys, winds), then the full-mix
+    // instruments by program, which puts drums (128) last among them. Ordering by first appearance
+    // would reshuffle the sidebar each time a chunk introduced an instrument.
+    std::array<int, NUM_INSTRUMENT_IDS> order {};
+
+    for (int id = 0; id < NUM_INSTRUMENT_IDS; id++) {
+        order[static_cast<std::size_t>(id)] = id;
+    }
+
+    std::sort(order.begin(), order.end(), [](int a, int b) { return sidebarOrderFor(a) < sidebarOrderFor(b); });
+
+    for (const int program: order) {
         const Tally& tally = mTallies[static_cast<std::size_t>(program)];
         const bool is_selected =
             std::find(mSelectedPrograms.begin(), mSelectedPrograms.end(), program) != mSelectedPrograms.end();

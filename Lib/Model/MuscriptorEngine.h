@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -42,7 +43,8 @@ public:
      */
     enum class Outcome { Success, Cancelled, Failed, CannotResume };
 
-    enum class Phase : std::uint8_t { LoadingModel, Transcribing };
+    // Separating: stem mode only, while the song is split into tracks before any model runs.
+    enum class Phase : std::uint8_t { LoadingModel, Transcribing, Separating };
 
     /** Where a transcribeToMIDI call is, as one value so the two fields are always read together. */
     struct Progress {
@@ -146,6 +148,15 @@ public:
     /** @return Progress of the current/last transcribeToMIDI call. Thread-safe. */
     Progress getProgress() const;
 
+    /**
+     * Rewrites every decoded note before anyone sees it -- streamed and final alike -- or drops it
+     * by returning false. Stem mode uses it to turn the model's program into the stem's id (and a
+     * drum key into its drum piece). Empty: notes pass through unchanged.
+     *
+     * Set from the thread that calls transcribeToMIDI, before the call; not touched by reset().
+     */
+    void setNoteMapper(std::function<bool(NoteEvent&)> inMapper);
+
 private:
     /** @return Success with mTranscriber set, or why not; Failed also sets mLastErrorMessage. */
     Outcome _loadModel(ModelSize inModelSize, const ComputeDeviceChoice& inDevice);
@@ -169,6 +180,8 @@ private:
     std::vector<NoteEvent> mFinalNotes;
 
     std::string mLastErrorMessage;
+
+    std::function<bool(NoteEvent&)> mNoteMapper;
 
     std::atomic<bool> mCancelRequested {false};
     std::atomic<Progress> mProgress {Progress {}};

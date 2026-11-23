@@ -15,6 +15,7 @@ namespace
 const juce::String LOADING_CAPTION = "LOADING MODEL";
 const juce::String TRANSCRIBING_CAPTION = "TRANSCRIBING";
 const juce::String PAUSED_CAPTION = "PAUSED";
+const juce::String SEPARATING_CAPTION = "SPLITTING TRACKS";
 constexpr float CAPTION_TRACKING = 0.06f;
 
 constexpr float BAR_CORNER = 2.0f;
@@ -32,7 +33,10 @@ int captionWidth(const juce::String& inCaption)
 /** Room for the widest caption, so the group does not change size when the phase does. */
 int captionSlotWidth()
 {
-    return std::max({captionWidth(LOADING_CAPTION), captionWidth(TRANSCRIBING_CAPTION), captionWidth(PAUSED_CAPTION)});
+    return std::max({captionWidth(LOADING_CAPTION),
+                     captionWidth(TRANSCRIBING_CAPTION),
+                     captionWidth(PAUSED_CAPTION),
+                     captionWidth(SEPARATING_CAPTION)});
 }
 
 /** Rounded to a hundredth, so a pulse that has barely moved does not force a repaint. */
@@ -103,9 +107,10 @@ void TranscriptionProgress::paint(juce::Graphics& g)
 
     g.setColour(nn::colours::progressText.withMultipliedAlpha(alpha));
     nn::drawTrackedText(g,
-                        mIsPaused ? PAUSED_CAPTION
-                        : loading ? LOADING_CAPTION
-                                  : TRANSCRIBING_CAPTION,
+                        mIsPaused                                                  ? PAUSED_CAPTION
+                        : mDisplayedPhase == MuscriptorEngine::Phase::Separating ? SEPARATING_CAPTION
+                        : loading                                                ? LOADING_CAPTION
+                                                                                 : TRANSCRIBING_CAPTION,
                         nn::fonts::statusBar(),
                         row.removeFromLeft(captionSlotWidth()).toFloat(),
                         juce::Justification::centredRight,

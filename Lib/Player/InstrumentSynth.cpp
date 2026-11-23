@@ -100,8 +100,10 @@ void InstrumentSynth::ensureInstrument(int inProgram)
         return;
     }
 
-    const int preset_index = inProgram == msl::DRUM_PROGRAM ? tsf_get_presetindex(mFont, DRUM_BANK, DRUM_PRESET)
-                                                            : tsf_get_presetindex(mFont, 0, inProgram);
+    // A stem id is not a sound of its own: it plays with the program its table entry names.
+    const int sound_program = soundProgramFor(inProgram);
+    const int preset_index = sound_program == msl::DRUM_PROGRAM ? tsf_get_presetindex(mFont, DRUM_BANK, DRUM_PRESET)
+                                                                : tsf_get_presetindex(mFont, 0, sound_program);
 
     if (preset_index < 0) {
         // The bundled soundfont holds a preset for every program the model emits, so this is a
@@ -355,7 +357,7 @@ void InstrumentSynth::_handleEvent(const SynthEvent& inEvent)
     // bell tree; releasing them still leaves 2.2 s and 18 s of sound, because the envelope release
     // is what actually ends them.
     const bool ends_on_its_own =
-        inEvent.program == msl::DRUM_PROGRAM && !instrument.loopingKeys[static_cast<std::size_t>(inEvent.pitch)];
+        isDrumId(inEvent.program) && !instrument.loopingKeys[static_cast<std::size_t>(inEvent.pitch)];
 
     if (!ends_on_its_own) {
         tsf_note_off(instrument.font, instrument.presetIndex, inEvent.pitch);
