@@ -124,8 +124,8 @@ endif ()
 juce_add_plugin("${BaseTargetName}"
         # VERSION ...                               # Set this if the plugin version is different to the project version
         ICON_BIG "${CMAKE_CURRENT_LIST_DIR}/NeuralNote/Assets/Logo/neuralnote-1024.png"
-        COMPANY_NAME "Dr. Audio"
-        BUNDLE_ID "com.draudio.neuralnote"
+        COMPANY_NAME "Danik"
+        BUNDLE_ID "com.danik.datune"
         IS_SYNTH FALSE
         NEEDS_MIDI_INPUT FALSE
         NEEDS_MIDI_OUTPUT TRUE
@@ -135,12 +135,12 @@ juce_add_plugin("${BaseTargetName}"
         MICROPHONE_PERMISSION_ENABLED TRUE
         MICROPHONE_PERMISSION_TEXT "Need access to Microphone"
         HARDENED_RUNTIME_ENABLED TRUE
-        PLUGIN_MANUFACTURER_CODE DrAu
-        PLUGIN_CODE NRNT
+        PLUGIN_MANUFACTURER_CODE Dnik
+        PLUGIN_CODE DaTn
         FORMATS AU VST3 Standalone
         # Only acted on for Linux, the one platform JUCE_USE_CURL is set for below.
         NEEDS_CURL TRUE
-        PRODUCT_NAME "NeuralNote")
+        PRODUCT_NAME "DaTune")
 
 # juce_add_plugin builds AppIcon.icns / icon.ico from ICON_BIG, with one size in the .icns and
 # four in the .ico. Replace them with the full size sets in Assets/Logo.

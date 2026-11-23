@@ -65,12 +65,12 @@ void paintWordmark(juce::Graphics& g, juce::Rectangle<int> inBounds)
 
     const auto name_font = nn::fonts::wordmark();
     const float name_x = static_cast<float>(inBounds.getX()) + 9.0f + 9.0f;
-    const float name_width = nn::trackedTextWidth("NEURALNOTE", name_font, 0.14f);
+    const float name_width = nn::trackedTextWidth("DATUNE", name_font, 0.14f);
 
     g.setColour(nn::colours::textBright);
     nn::drawTrackedText(
         g,
-        "NEURALNOTE",
+        "DATUNE",
         name_font,
         {name_x, static_cast<float>(inBounds.getY()), name_width, static_cast<float>(inBounds.getHeight())},
         juce::Justification::centredLeft,

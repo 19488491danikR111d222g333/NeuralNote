@@ -1,4 +1,4 @@
-name: Build Windows (stem mode)
+name: Build DaTune for Windows
 
 # Builds NeuralNote with stem mode for Windows and keeps the result as a downloadable artifact:
 # NeuralNote.exe, the NeuralNote.vst3 bundle and the installer. Runs on every push to this branch,
@@ -58,21 +58,18 @@ jobs:
           path: .ccache
           key: ccache-windows-x64-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Package
-        run: python .github/scripts/package_windows.py
-
       - name: Collect files
         shell: pwsh
         run: |
-          $out = "NeuralNote_Danik"
+          $out = "DaTune"
           New-Item -ItemType Directory -Force "$out/program", "$out/vst3" | Out-Null
-          Copy-Item "build/NeuralNote_artefacts/Release/Standalone/NeuralNote.exe" "$out/program/"
-          Copy-Item -Recurse "build/NeuralNote_artefacts/Release/VST3/NeuralNote.vst3" "$out/vst3/"
-          Copy-Item "Installers/Windows/Output/NeuralNote_Installer_Windows_x64.exe" "$out/"
+          Copy-Item "build/NeuralNote_artefacts/Release/Standalone/DaTune.exe" "$out/program/"
+          Copy-Item -Recurse "build/NeuralNote_artefacts/Release/VST3/DaTune.vst3" "$out/vst3/"
+          Get-ChildItem -Recurse $out -Filter *.pdb | Remove-Item
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: NeuralNote_Danik_Windows
-          path: NeuralNote_Danik
+          name: DaTune_Windows
+          path: DaTune
           retention-days: 90
